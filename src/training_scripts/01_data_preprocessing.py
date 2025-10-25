@@ -1,237 +1,158 @@
-#!/usr/bin/env python3
 """
-Ghost Type Corrector - Data Preprocessing Pipeline
-===================================================
-Prepares training data by cleaning corpus text and generating synthetic typos.
+Script 01: Data Preprocessing
 
-This script:
-1. Loads raw text from corpus.txt
-2. Cleans and normalizes the text (lowercase, remove punctuation, etc.)
-3. Generates synthetic typos for training data
-4. Saves paired clean/noisy datasets
+Reads a raw text corpus, cleans it, splits it into train/test sets,
+and generates noisy versions to create a parallel corpus for training
+the autocorrect model.
 
-Author: Ghost Type Corrector Team
-License: MIT
+This script should be run before 02_model_training.py.
 """
 
-import re
 import os
+import re
 import random
-import sys
-from pathlib import Path
-from tqdm import tqdm
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.preprocessing.text import Tokenizer
+import json
 
-# =============================================================================
-# CONFIGURATION - MAXIMUM SETTINGS
-# =============================================================================
+# --- Configuration ---
+# Define paths relative to the project root
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
 
-# Noise level: increased for more training variation
-NOISE_LEVEL = 0.20  # Increased from 0.15 for more diverse typos
+# Input file
+RAW_CORPUS_PATH = os.path.join(DATA_DIR, 'raw_corpus.txt')
 
-# Minimum sentence length (in words) to keep
-MIN_SENTENCE_LENGTH = 3
+# Output files
+CLEAN_TRAIN_PATH = os.path.join(DATA_DIR, 'train_clean.txt')
+NOISY_TRAIN_PATH = os.path.join(DATA_DIR, 'train_noisy.txt')
+TOKENIZER_PATH = os.path.join(DATA_DIR, 'tokenizer_config.json')
 
-# Random seed for reproducibility
-RANDOM_SEED = 42
+# Parameters
+TEST_SPLIT_SIZE = 0.2
+RANDOM_STATE = 42
+VOCAB_SIZE = 10000  # Max number of words to keep in the tokenizer
+MAX_LEN = 20        # Max sequence length (must match model training)
 
 
-# =============================================================================
-# TEXT CLEANING FUNCTIONS
-# =============================================================================
+# --- Helper Functions ---
 
-def clean_line(text: str) -> str:
+def clean_text(text):
     """
-    Clean a single line of text from the corpus.
-    
-    Transformations:
-    - Remove line numbers (e.g., "1 \\t")
-    - Convert to lowercase
-    - Remove punctuation, symbols, and numbers
-    - Normalize whitespace
-    - Filter very short sentences
-    
-    Args:
-        text: Raw text line from corpus
-        
-    Returns:
-        Cleaned text string, or None if line should be skipped
+    Applies basic text cleaning and adds special tokens.
+    - Lowercase
+    - Remove special characters (except basic punctuation)
+    - Add <sos> (start) and <eos> (end) tokens
     """
-    # Remove line number prefix (e.g., "42\t")
-    match = re.search(r'^\d+\t(.*)', text)
-    if match:
-        text = match.group(1)
-    
-    # Convert to lowercase
     text = text.lower()
+    text = re.sub(r"[^a-z0-9\s.,']", "", text)
+    text = re.sub(r"([\w\d\s.,'])(?=\1)", "", text) # Remove consecutive duplicates
     
-    # Remove everything except letters and spaces
-    text = re.sub(r'[^a-z\s]', '', text)
-    
-    # Normalize whitespace (replace multiple spaces with single space)
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    # Filter out very short sentences
-    if len(text.split()) < MIN_SENTENCE_LENGTH:
-        return None
-    
-    return text
+    # Add start and end tokens
+    return f"<sos> {text} <eos>"
 
-
-def add_noise_to_sentence(sentence: str, noise_level: float = NOISE_LEVEL) -> str:
+def add_noise(text, noise_level=0.15):
     """
-    Add realistic typing errors to a sentence.
-    
-    Typo types:
-    - delete: Remove a random character
-    - insert: Insert a random character
-    - substitute: Replace a character with another
-    - swap: Swap two adjacent characters
-    
-    Args:
-        sentence: Clean input sentence
-        noise_level: Probability (0-1) that each word gets a typo
-        
-    Returns:
-        Sentence with synthetic typos
+    Introduces common typographical errors into a text.
+    - Substitution: replace a char
+    - Insertion: add a char
+    - Deletion: remove a char
+    - Transposition: swap adjacent chars
     """
-    words = sentence.split()
-    noised_words = []
-    alphabet = 'abcdefghijklmnopqrstuvwxyz'
-    
-    for word in words:
-        # Only add noise to longer words, with probability noise_level
-        if random.random() < noise_level and len(word) > 3:
-            typo_type = random.choice(['delete', 'insert', 'substitute', 'swap'])
-            
-            if typo_type == 'delete':
-                # Remove a random character
-                pos = random.randint(0, len(word) - 1)
-                noised_word = word[:pos] + word[pos+1:]
-                
-            elif typo_type == 'insert':
-                # Insert a random character
-                pos = random.randint(0, len(word))
-                char = random.choice(alphabet)
-                noised_word = word[:pos] + char + word[pos:]
-                
-            elif typo_type == 'substitute':
-                # Replace a character with a random one
-                pos = random.randint(0, len(word) - 1)
-                char = random.choice(alphabet)
-                noised_word = word[:pos] + char + word[pos+1:]
-                
-            else:  # swap
-                # Swap two adjacent characters
-                if len(word) > 1:
-                    pos = random.randint(0, len(word) - 2)
-                    noised_word = word[:pos] + word[pos+1] + word[pos] + word[pos+2:]
-                else:
-                    noised_word = word
-            
-            noised_words.append(noised_word)
-        else:
-            # Keep original word
-            noised_words.append(word)
-    
-    return ' '.join(noised_words)
+    # Don't add noise to the special tokens
+    if text.startswith("<sos> ") and text.endswith(" <eos>"):
+        core_text = text[6:-6]
+    else:
+        core_text = text
 
+    chars = list(core_text)
+    for i in range(len(chars)):
+        if random.random() < noise_level:
+            noise_type = random.choice(['sub', 'ins', 'del', 'trans'])
+            
+            # Substitution
+            if noise_type == 'sub' and chars[i].isalpha():
+                chars[i] = random.choice('abcdefghijklmnopqrstuvwxyz')
+            
+            # Insertion
+            elif noise_type == 'ins' and chars[i].isalpha():
+                chars.insert(i, random.choice('abcdefghijklmnopqrstuvwxyz'))
+            
+            # Deletion
+            elif noise_type == 'del':
+                chars[i] = ''
+                
+            # Transposition (swap with next char)
+            elif noise_type == 'trans' and i < len(chars) - 1:
+                chars[i], chars[i+1] = chars[i+1], chars[i]
+                
+    # Re-add special tokens
+    return f"<sos> {''.join(chars)} <eos>"
 
-# =============================================================================
-# MAIN PROCESSING PIPELINE
-# =============================================================================
+# --- Main Execution ---
 
 def main():
-    """Main data preprocessing pipeline."""
-    
-    print("=" * 70)
-    print("GHOST TYPE CORRECTOR - DATA PREPROCESSING")
-    print("=" * 70)
-    print()
-    
-    # Set random seed for reproducibility
-    random.seed(RANDOM_SEED)
-    print(f"Random seed: {RANDOM_SEED}")
-    print(f"Noise level: {NOISE_LEVEL * 100:.1f}%")
-    print()
-    
-    # Define file paths
-    project_root = Path(__file__).parent.parent
-    data_dir = project_root / 'data'
-    
-    input_corpus = data_dir / 'corpus.txt'
-    output_clean = data_dir / 'train_clean.txt'
-    output_noisy = data_dir / 'train_noisy.txt'
-    
-    print(f"Input:  {input_corpus}")
-    print(f"Output: {output_clean}")
-    print(f"        {output_noisy}")
-    print()
-    
-    # Check if input file exists
-    if not input_corpus.exists():
-        print(f"ERROR: Input file not found!")
-        print(f"Expected location: {input_corpus}")
-        print()
-        print("Please place your corpus.txt file in the ai_model/data/ directory.")
-        sys.exit(1)
-    
-    # Count total lines for progress bar
-    print("Counting lines in corpus...")
-    with open(input_corpus, 'r', encoding='utf-8') as f:
-        total_lines = sum(1 for _ in f)
-    print(f"Found {total_lines:,} lines")
-    print()
-    
-    # Process corpus
-    print("Processing corpus...")
-    processed_count = 0
-    skipped_count = 0
-    
-    with open(input_corpus, 'r', encoding='utf-8') as f_in, \
-         open(output_clean, 'w', encoding='utf-8') as f_clean, \
-         open(output_noisy, 'w', encoding='utf-8') as f_noisy:
-        
-        for line in tqdm(f_in, total=total_lines, desc="Processing"):
-            # Clean the line
-            clean_sentence = clean_line(line)
-            
-            if clean_sentence:
-                # Generate noisy version
-                noisy_sentence = add_noise_to_sentence(clean_sentence)
-                
-                # Write to output files
-                f_clean.write(clean_sentence + '\n')
-                f_noisy.write(noisy_sentence + '\n')
-                
-                processed_count += 1
-            else:
-                skipped_count += 1
-    
-    # Summary
-    print()
-    print("=" * 70)
-    print("PREPROCESSING COMPLETE")
-    print("=" * 70)
-    print(f"Processed: {processed_count:,} sentences")
-    print(f"Skipped:   {skipped_count:,} sentences (too short)")
-    print()
-    print(f"Output files created:")
-    print(f"  ✓ {output_clean}")
-    print(f"  ✓ {output_noisy}")
-    print()
-    
-    # Show sample output
-    print("Sample pairs (first 3):")
-    print("-" * 70)
-    with open(output_clean, 'r', encoding='utf-8') as f_clean, \
-         open(output_noisy, 'r', encoding='utf-8') as f_noisy:
-        for i in range(min(3, processed_count)):
-            clean = f_clean.readline().strip()
-            noisy = f_noisy.readline().strip()
-            print(f"{i+1}. Clean: {clean}")
-            print(f"   Noisy: {noisy}")
-            print()
+    """
+    Main preprocessing pipeline.
+    """
+    print("Starting data preprocessing...")
 
+    # 1. Load raw data
+    try:
+        with open(RAW_CORPUS_PATH, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        print(f"Loaded {len(lines)} lines from '{RAW_CORPUS_PATH}'.")
+    except FileNotFoundError:
+        print(f"CRITICAL ERROR: Raw corpus not found.")
+        print(f"Please place your 'raw_corpus.txt' file in the '{DATA_DIR}' folder.")
+        return
+
+    # 2. Clean and filter data
+    cleaned_lines = [clean_text(line) for line in lines if line.strip()]
+    
+    # 3. Create DataFrame
+    df = pd.DataFrame({'clean': cleaned_lines})
+    
+    # 4. Filter by length
+    df['len'] = df['clean'].apply(lambda x: len(x.split()))
+    df = df[df['len'] <= MAX_LEN]
+    print(f"Filtered down to {len(df)} samples with max length {MAX_LEN}.")
+    
+    # 5. Add noise
+    print("Generating noisy data...")
+    df['noisy'] = df['clean'].apply(add_noise)
+    
+    # 6. Split data
+    train_df, test_df = train_test_split(df, test_size=TEST_SPLIT_SIZE, random_state=RANDOM_STATE)
+    print(f"Split data into {len(train_df)} training and {len(test_df)} test samples.")
+    
+    # 7. Fit tokenizer
+    # We fit the tokenizer on *all* data (clean and noisy) to ensure
+    # it recognizes both correct words and common typos.
+    all_texts = train_df['clean'].tolist() + train_df['noisy'].tolist()
+    
+    # We add <oov> for out-of-vocabulary words
+    tokenizer = Tokenizer(num_words=VOCAB_SIZE, oov_token='<oov>')
+    tokenizer.fit_on_texts(all_texts)
+    
+    # 8. Save tokenizer
+    # We must save the tokenizer as a JSON *string*
+    tokenizer_json_string = tokenizer.to_json()
+    with open(TOKENIZER_PATH, 'w', encoding='utf-8') as f:
+        # json.dump ensures the string is saved correctly in a JSON file
+        json.dump(tokenizer_json_string, f, ensure_ascii=False, indent=4)
+    print(f"Tokenizer fitted and saved to '{TOKENIZER_PATH}'.")
+
+    # 9. Save processed training files
+    with open(CLEAN_TRAIN_PATH, 'w', encoding='utf-8') as f:
+        f.writelines([line + '\n' for line in train_df['clean']])
+        
+    with open(NOISY_TRAIN_PATH, 'w', encoding='utf-8') as f:
+        f.writelines([line + '\n' for line in train_df['noisy']])
+        
+    print(f"Saved processed training files to '{CLEAN_TRAIN_PATH}' and '{NOISY_TRAIN_PATH}'.")
+    print("Data preprocessing complete.")
 
 if __name__ == "__main__":
     main()
