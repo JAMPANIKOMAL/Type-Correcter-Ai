@@ -17,6 +17,15 @@ from tensorflow.keras.preprocessing.text import tokenizer_from_json
 from keras_preprocessing.sequence import pad_sequences
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
+# --- !! TRAINING CONFIGURATION !! ---
+
+# Set to True for a quick test run (small data, few epochs)
+# Set to False for the full, final model training
+TEST_MODE = True
+
+# --- End of Configuration ---
+
+
 # --- Configuration ---
 # Define paths relative to the project root
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,16 +45,30 @@ MAX_LEN = 20
 VOCAB_SIZE = 10000
 EMBEDDING_DIM = 256
 GRU_UNITS = 256
-BATCH_SIZE = 128
-EPOCHS = 50
+
+# --- Set Training Parameters based on TEST_MODE ---
+if TEST_MODE:
+    print("---!! RUNNING IN TEST MODE !!---")
+    BATCH_SIZE = 64
+    EPOCHS = 3
+    DATA_SLICE = 20000 # Use only 20,000 samples
+else:
+    print("--- RUNNING IN FULL TRAINING MODE ---")
+    BATCH_SIZE = 128
+    EPOCHS = 50
+    DATA_SLICE = None # Use all data
+
 
 # --- Helper Functions ---
 
-def load_data(path):
-    """Loads a text file into a list of lines."""
+def load_data(path, num_samples=None):
+    """Loads a text file into a list of lines, optionally slicing it."""
     try:
         with open(path, 'r', encoding='utf-8') as f:
-            return [line.strip() for line in f.readlines()]
+            lines = [line.strip() for line in f.readlines()]
+            if num_samples:
+                return lines[:num_samples]
+            return lines
     except FileNotFoundError:
         print(f"CRITICAL ERROR: File not found at {path}")
         return None
@@ -123,9 +146,9 @@ def main():
     if not tokenizer:
         return
         
-    # 2. Load Data
-    clean_lines = load_data(CLEAN_TRAIN_PATH)
-    noisy_lines = load_data(NOISY_TRAIN_PATH)
+    # 2. Load Data (using DATA_SLICE)
+    clean_lines = load_data(CLEAN_TRAIN_PATH, DATA_SLICE)
+    noisy_lines = load_data(NOISY_TRAIN_PATH, DATA_SLICE)
     
     if not clean_lines or not noisy_lines or len(clean_lines) != len(noisy_lines):
         print("ERROR: Training data is missing or mismatched.")
