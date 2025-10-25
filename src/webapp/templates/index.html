@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Type Correcter Ai</title>
+    <!-- 
+      This 'url_for' function is a Flask helper.
+      It automatically finds the correct path to our 'style.css' file.
+    -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Type Correcter Ai</h1>
+            <p>AI Project (G5AD21AI)</p>
+        </header>
+        
+        <main>
+            <p class="instructions">Enter your text below. The AI will correct it.</p>
+            
+            <div class="io-box">
+                <!-- Input Text Area -->
+                <div class="text-area-container">
+                    <label for="input-text">Your Text:</label>
+                    <textarea id="input-text" rows="8" placeholder="Type somethin wrong..."></textarea>
+                </div>
+                
+                <!-- Output Text Area -->
+                <div class="text-area-container">
+                    <label for="output-text">Corrected Text:</label>
+                    <textarea id="output-text" rows="8" readonly placeholder="Correction will appear here..."></textarea>
+                </div>
+            </div>
+            
+            <!-- This button will be controlled by our JavaScript -->
+            <button id="correct-button">Correct Text</button>
+            
+            <!-- A loading spinner that is hidden by default -->
+            <div id="loading-spinner" class="spinner" style="display: none;"></div>
+        </main>
+        
+        <footer>
+            A Deep Learning project using a Sequence-to-Sequence model.
+        </footer>
+    </div>
+    
+    <!-- 
+      This links to our JavaScript file.
+      It's placed at the end of the <body> so the page loads before the script runs.
+    -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
