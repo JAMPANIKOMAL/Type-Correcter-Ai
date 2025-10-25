@@ -1,0 +1,16 @@
+name: type-correcter-ai-cpu
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.9
+  - pip
+  - flask
+  - numpy
+  - pandas
+  - scikit-learn
+  - tensorflow
+  - matplotlib
+  - pyyaml
+  - pip:
+    - keras-preprocessing

@@ -1,0 +1,70 @@
+# =============================================================================
+# TYPE CORRECTER AI - GPU-ACCELERATED ENVIRONMENT
+# =============================================================================
+# This environment is optimized for NVIDIA GPU training with CUDA support.
+#
+# Requirements:
+#   - NVIDIA GPU with CUDA Compute Capability 3.5 or higher
+#   - NVIDIA GPU drivers installed
+#
+# Installation:
+#   conda env create -f environment-gpu.yml
+#   conda activate type-correcter-ai-gpu
+#   
+# Post-Installation (Required):
+#   conda install -c conda-forge cudatoolkit=11.2 cudnn=8.1.0 -y
+#
+# Verify GPU:
+#   python -c "import tensorflow as tf; print('GPUs:', tf.config.list_physical_devices('GPU'))"
+#
+# =============================================================================
+
+name: type-correcter-ai-gpu
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Python
+  - python=3.9 # Sticking to 3.9 for broad compatibility, but 3.10 is also fine.
+  
+  # Core scientific computing & AI
+  - numpy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  
+  # Web Framework (GUI)
+  - flask
+  
+  # Data processing
+  - h5py
+  - pyyaml
+  
+  # Package manager
+  - pip
+
+  # Install via pip for precise version control
+  - pip:
+      # TensorFlow 2.10 is the last version with native Windows GPU support
+      - tensorflow==2.10.1
+      
+      - keras-preprocessing
+      
+      # Required for TF 2.10
+      - protobuf<3.20
+
+# =============================================================================
+# POST-INSTALLATION STEPS (IMPORTANT!)
+# =============================================================================
+# After creating the environment, run these commands:
+#
+# 1. Activate environment:
+#   conda activate type-correcter-ai-gpu
+#
+# 2. Install CUDA Toolkit and cuDNN:
+#   conda install -c conda-forge cudatoolkit=11.2 cudnn=8.1.0 -y
+#
+# These specific versions are required for TensorFlow 2.10 GPU support.
+# =============================================================================
