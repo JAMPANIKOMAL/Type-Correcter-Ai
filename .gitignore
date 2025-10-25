@@ -1,9 +1,15 @@
 # Python
 __pycache__/
+*.py[cod]
 *.pyc
+*.pyo
+*.pyd
+.python-version
 .env
+.env.local
 venv/
 env/
+.venv/
 
 # Conda
 .conda/
@@ -18,7 +24,20 @@ env/
 
 # Logs
 logs/
-*.logbfg.jar
+*.log
 
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
 
-bfg.jar
+# Test / type check
+.pytest_cache/
+.mypy_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Misc
+*.sqlite3
